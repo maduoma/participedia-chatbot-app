@@ -35,7 +35,7 @@ def preprocess_case_data():
 
 
 def preprocess_method_data():
-    # Load the method dataset with UTF-8 encoding
+    # Loading the method dataset with UTF-8 encoding
     method_data = pd.read_csv(method_dataset_path, encoding='utf-8')
 
     # Select essential columns

@@ -13,6 +13,7 @@ cleaned_method_path = 'raw_clean_data/cleaned_method_data.csv'
 # Initialize PostgreSQL engine
 engine = create_engine(DATABASE_URI)
 
+
 def setup_database():
     with engine.connect() as conn:
         # Ensure UTF-8 encoding for this connection
@@ -50,6 +51,7 @@ def setup_database():
 
         print("Database tables and indexes created successfully.")
 
+
 def load_data_to_db():
     # Load cleaned datasets
     case_data = pd.read_csv(cleaned_case_path, encoding='utf-8')
@@ -60,6 +62,7 @@ def load_data_to_db():
     method_data.to_sql('methods', engine, if_exists='append', index=False)
 
     print("Cleaned data loaded into PostgreSQL database.")
+
 
 if __name__ == "__main__":
     setup_database()
