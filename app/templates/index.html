@@ -1,0 +1,20 @@
+<!-- index.html -->
+{% extends "layout.html" %}
+
+{% block content %}
+    <div class="main-content">
+        <h2>Chat Interface</h2>
+        <div id="chat-output" class="chat-box"></div>
+        <form id="chat-form">
+            <input type="text" id="chat-input" placeholder="Type your message here..." required>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <div class="sidebar collapsed">
+        <h3>Chat History</h3>
+        <div id="history">
+            <!-- JavaScript will populate chat history here -->
+        </div>
+    </div>
+    <button class="sidebar-toggle">Toggle Sidebar</button>
+{% endblock %}

@@ -1,0 +1,11 @@
+<!-- upload.html -->
+{% extends "layout.html" %}
+
+{% block content %}
+<h2>Upload Datasets</h2>
+<form action="/upload" method="post" enctype="multipart/form-data">
+    <label for="files">Select CSV files to upload:</label>
+    <input type="file" id="files" name="files" multiple required>
+    <button type="submit">Upload</button>
+</form>
+{% endblock %}

@@ -1,8 +1,15 @@
 # File: config.py
 
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+
 class Config:
-    SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:postgres@localhost/chatbot_db'
+    SECRET_KEY = os.getenv('SECRET_KEY')
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    SERPAPI_API_KEY = os.getenv('SERPAPI_API_KEY')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    OPENAI_API_KEY = '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'
-    SERPAPI_API_KEY = 'afc6be8414f2de36ebc94e1a3a37862b1f7adfd1b67bfe0935dffbb774b9b050'
-    SECRET_KEY = 'secretkey'
