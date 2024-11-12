@@ -1,10 +1,10 @@
 # manage.py
-from flask.cli import FlaskGroup
+
+from flask_migrate import Migrate
 from app import create_app, db
 
 app = create_app()
-cli = FlaskGroup(app)
+migrate = Migrate(app, db)
 
-# Custom commands can be added here if needed
 if __name__ == "__main__":
-    cli()
+    app.run()

@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from app import db
 from app.models import Case, Method
-from data_processing.data_preprocessing import preprocess_case_data, preprocess_method_data
+from app.data_processing.data_preprocessing import preprocess_case_data, preprocess_method_data
 
 # Define the paths for storing cleaned data
 CLEANED_CASE_PATH = 'data_processing/raw_clean_data/cleaned_case_data.csv'
