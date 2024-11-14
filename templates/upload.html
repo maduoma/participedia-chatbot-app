@@ -1,0 +1,13 @@
+<!-- File: templates/upload.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<div id="upload-container">
+    <h2>Upload Datasets</h2>
+    <form action="{{ url_for('upload_files') }}" method="post" enctype="multipart/form-data">
+        <input type="file" name="files[]" multiple accept=".csv">
+        <button type="submit">Upload</button>
+    </form>
+</div>
+{% endblock %}

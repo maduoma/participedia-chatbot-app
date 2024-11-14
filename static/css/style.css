@@ -1,0 +1,118 @@
+/* File: static/style.css */
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+header {
+    background-color: #003366;
+    color: white;
+    padding: 10px;
+}
+
+header h1 {
+    margin: 0;
+}
+
+nav ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+nav ul li {
+    display: inline-block;
+    margin-right: 15px;
+}
+
+nav ul li a {
+    color: white;
+    text-decoration: none;
+}
+
+#chat-container {
+    display: flex;
+    height: calc(100vh - 100px);
+}
+
+#sidebar {
+    width: 0;
+    background-color: #f4f4f4;
+    overflow-y: auto;
+    transition: all 0.3s;
+}
+
+#sidebar.collapsed {
+    width: 250px;
+}
+
+#toggle-sidebar {
+    background-color: #003366;
+    color: white;
+    border: none;
+    width: 100%;
+    padding: 10px;
+    cursor: pointer;
+}
+
+#sidebar-content {
+    display: none;
+}
+
+#sidebar-content.collapsed {
+    display: block;
+}
+
+#chat-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-window {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+#user-input {
+    padding: 10px;
+    background-color: #eee;
+}
+
+#user-input form {
+    display: flex;
+}
+
+#user-input input[type="text"] {
+    flex: 1;
+    padding: 10px;
+}
+
+#user-input button {
+    padding: 10px;
+}
+
+#upload-container {
+    padding: 20px;
+}
+
+footer {
+    background-color: #003366;
+    color: white;
+    text-align: center;
+    padding: 10px;
+}
+
+.flashes {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+.flashes li {
+    background-color: #ffcc00;
+    color: #333;
+    padding: 10px;
+    margin-bottom: 10px;
+}

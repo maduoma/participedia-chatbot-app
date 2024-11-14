@@ -1,8 +1,8 @@
-"""Initial migration with chat_sessions and chat_histories tables
+"""Page Functionalities
 
-Revision ID: 0760e6d7a309
+Revision ID: dda997ac7acb
 Revises: 
-Create Date: 2024-11-14 07:59:30.677902
+Create Date: 2024-11-14 13:20:37.919071
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '0760e6d7a309'
+revision = 'dda997ac7acb'
 down_revision = None
 branch_labels = None
 depends_on = None

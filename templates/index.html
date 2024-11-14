@@ -1,0 +1,32 @@
+<!-- File: templates/index.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<div id="chat-container">
+    <div id="sidebar">
+        <button id="toggle-sidebar">☰</button>
+        <div id="sidebar-content" class="collapsed">
+            <h2>Chat Sessions</h2>
+            <ul id="chat-sessions-list">
+                <!-- Chat session links will be loaded here via AJAX -->
+            </ul>
+        </div>
+    </div>
+    <div id="chat-view">
+        <div id="chat-window">
+            <!-- Chat messages will be displayed here -->
+        </div>
+        <div id="user-input">
+            <form id="chat-form">
+                <input type="text" id="user-message" placeholder="Type your message here..." autocomplete="off">
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+    const sessionId = null;
+    loadChatSessions();
+</script>
+{% endblock %}

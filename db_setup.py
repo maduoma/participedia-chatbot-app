@@ -1,14 +1,13 @@
-# File: db_setup.py
-
 import pandas as pd
 from sqlalchemy import create_engine, text
+import os
 
 # PostgreSQL connection URL
 DATABASE_URI = 'postgresql://postgres:postgres@localhost/chatbot_db?client_encoding=utf8'
 
 # Paths to cleaned data
-cleaned_case_path = 'raw_clean_data/cleaned_case_data.csv'
-cleaned_method_path = 'raw_clean_data/cleaned_method_data.csv'
+CLEANED_CASE_PATH = 'raw_clean_data/cleaned_case_data.csv'
+CLEANED_METHOD_PATH = 'raw_clean_data/cleaned_method_data.csv'
 
 # Initialize PostgreSQL engine
 engine = create_engine(DATABASE_URI)
@@ -78,12 +77,29 @@ def setup_database():
 
 def load_data_to_db():
     # Load cleaned datasets
-    case_data = pd.read_csv(cleaned_case_path, encoding='utf-8')
-    method_data = pd.read_csv(cleaned_method_path, encoding='utf-8')
+    if not os.path.exists(CLEANED_CASE_PATH):
+        print(f"{CLEANED_CASE_PATH} does not exist.")
+        return
+    if not os.path.exists(CLEANED_METHOD_PATH):
+        print(f"{CLEANED_METHOD_PATH} does not exist.")
+        return
 
-    # Load data into PostgreSQL tables
-    case_data.to_sql('cases', engine, if_exists='append', index=False)
-    method_data.to_sql('methods', engine, if_exists='append', index=False)
+    case_data = pd.read_csv(CLEANED_CASE_PATH, encoding='utf-8')
+    method_data = pd.read_csv(CLEANED_METHOD_PATH, encoding='utf-8')
+
+    # Use a database session for transaction management
+    with engine.begin() as connection:
+        # Acquire an exclusive lock on the cases and methods tables
+        connection.execute(text("LOCK TABLE cases IN ACCESS EXCLUSIVE MODE"))
+        connection.execute(text("LOCK TABLE methods IN ACCESS EXCLUSIVE MODE"))
+
+        # Clear existing data in cases and methods tables
+        connection.execute(text("DELETE FROM cases"))
+        connection.execute(text("DELETE FROM methods"))
+
+        # Load data into PostgreSQL tables
+        case_data.to_sql('cases', connection, if_exists='append', index=False)
+        method_data.to_sql('methods', connection, if_exists='append', index=False)
 
     print("Cleaned data loaded into PostgreSQL database.")
 

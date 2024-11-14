@@ -1,7 +1,7 @@
 # File: app.py
 
 from config import Config
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, render_template, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 import openai
 import requests
@@ -12,6 +12,8 @@ import logging
 from nltk.tokenize import sent_tokenize
 import nltk
 from flask_migrate import Migrate
+import os
+from werkzeug.utils import secure_filename
 
 # Download the 'punkt' tokenizer models
 nltk.download('punkt')
@@ -28,15 +30,16 @@ app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY  # For session management
 db = SQLAlchemy(app)
 
-
-
 # After initializing the app and db
 migrate = Migrate(app, db)
-
 
 # Set up OpenAI and SerpAPI keys
 client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
 serpapi_key = Config.SERPAPI_API_KEY
+
+# Allowed extensions for file uploads
+ALLOWED_EXTENSIONS = {'csv'}
+app.config['UPLOAD_FOLDER'] = 'raw_clean_data'
 
 
 # SQLAlchemy Models for Cases, Methods, ChatSessions, and ChatHistories
@@ -62,6 +65,7 @@ class ChatSession(db.Model):
     user_id = db.Column(db.String, nullable=False)  # Use unique identifier for each user
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     histories = db.relationship('ChatHistory', backref='session', lazy=True)
+    title = db.Column(db.String, nullable=True)  # Add title for the session
 
 
 class ChatHistory(db.Model):
@@ -74,13 +78,22 @@ class ChatHistory(db.Model):
 
 
 # Function to get or create a chat session
-def get_or_create_session(user_id):
-    session_record = ChatSession.query.filter_by(user_id=user_id).first()
-    if not session_record:
-        session_record = ChatSession(user_id=user_id)
-        db.session.add(session_record)
-        db.session.commit()
+def get_or_create_session(user_id, session_id=None):
+    if session_id:
+        session_record = ChatSession.query.filter_by(id=session_id, user_id=user_id).first()
+        if session_record:
+            return session_record
+    else:
+        # Check if there's an active session without specifying session_id
+        session_record = ChatSession.query.filter_by(user_id=user_id).order_by(ChatSession.created_at.desc()).first()
+        if session_record:
+            return session_record
+    # Create a new session if none exists
+    session_record = ChatSession(user_id=user_id)
+    db.session.add(session_record)
+    db.session.commit()
     return session_record
+
 
 
 # Function to capitalize the first letter of each sentence
@@ -97,14 +110,35 @@ def is_greeting(query):
     return any(greeting in query.lower() for greeting in greetings)
 
 
+# Endpoint to render the home page
+@app.route("/", methods=["GET"])
+def home():
+    return render_template('index.html')
+
+
+# Endpoint to start a new chat session
+@app.route('/new_chat', methods=['GET'])
+def new_chat():
+    user_id = session.get('user_id', 'default_user')
+    chat_session = get_or_create_session(user_id)
+    return redirect(url_for('chat', session_id=chat_session.id))
+
+
+# Endpoint to continue a chat session
+@app.route('/chat/<int:session_id>', methods=['GET'])
+def chat(session_id):
+    return render_template('chat.html', session_id=session_id)
+
+
 # Endpoint to handle user queries
 @app.route('/query', methods=['POST'])
 def handle_query():
     user_query = request.json.get('query')
-    user_id = request.json.get('user_id', 'default_user')  # Default user_id if not provided
+    session_id = request.json.get('session_id')
+    user_id = session.get('user_id', 'default_user')  # Default user_id if not provided
 
     # Get or create a session for the user
-    chat_session = get_or_create_session(user_id)
+    chat_session = get_or_create_session(user_id, session_id)
 
     # Check for greeting
     if is_greeting(user_query):
@@ -294,29 +328,65 @@ def search_online(query):
         return {"error": "Failed to fetch online results"}
 
 
-@app.route('/feedback', methods=['POST'])
-def feedback():
-    feedback_data = request.json.get('feedback')
-    if 'memory' in session and session['memory']:
-        session['memory'][-1]['feedback'] = feedback_data
-    return jsonify({"message": "Feedback recorded. Thank you!"})
+# Endpoint to get chat sessions for the user
+@app.route('/get_chat_sessions', methods=['GET'])
+def get_chat_sessions():
+    user_id = session.get('user_id', 'default_user')
+    sessions = ChatSession.query.filter_by(user_id=user_id).order_by(ChatSession.created_at.desc()).all()
+    session_list = [{"id": s.id, "title": s.title or f"Chat {s.id}"} for s in sessions]
+    return jsonify(session_list)
 
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Server is running!"
+# Endpoint to get chat history for a session
+@app.route('/get_chat_history/<int:session_id>', methods=['GET'])
+def get_chat_history(session_id):
+    histories = ChatHistory.query.filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
+    history_list = [{"query": h.query, "response": h.response} for h in histories]
+    return jsonify(history_list)
 
 
-# Temporary function to verify spaCy tokenization
-@app.route('/test_spacy', methods=['GET'])
-def test_spacy():
-    try:
-        test_text = "This is a test sentence."
-        doc = nlp(test_text)
-        tokens = [token.text for token in doc]
-        return jsonify({"tokens": tokens})
-    except Exception as e:
-        return jsonify({"error": str(e)})
+# Endpoint to handle file uploads
+@app.route('/upload', methods=['GET', 'POST'])
+def upload_files():
+    if request.method == 'POST':
+        if 'files[]' not in request.files:
+            flash('No files selected.')
+            return redirect(request.url)
+        files = request.files.getlist('files[]')
+        uploaded = False
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                uploaded = True
+        if uploaded:
+            try:
+                # After saving files, process and load them into the database
+                preprocess_and_load_data()
+                flash('Files uploaded and data processed successfully.')
+            except Exception as e:
+                logging.error(f"Error processing files: {e}")
+                flash('An error occurred while processing the files.')
+        else:
+            flash('No valid files were uploaded.')
+        return redirect(url_for('home'))
+    return render_template('upload.html')
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def preprocess_and_load_data():
+    # Call the functions from data_preprocessing.py and db_setup.py
+    from data_preprocessing import preprocess_case_data, preprocess_method_data
+    from db_setup import setup_database, load_data_to_db
+
+    preprocess_case_data()
+    preprocess_method_data()
+    setup_database()
+    load_data_to_db()
 
 
 if __name__ == '__main__':

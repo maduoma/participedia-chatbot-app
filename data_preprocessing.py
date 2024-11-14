@@ -1,6 +1,7 @@
 # File: data_preprocessing.py
 
 import pandas as pd
+import os
 
 # Paths to the raw datasets
 case_dataset_path = 'raw_clean_data/Case Dataset.csv'
@@ -12,6 +13,11 @@ cleaned_method_path = 'raw_clean_data/cleaned_method_data.csv'
 
 
 def preprocess_case_data():
+    # Check if the file exists
+    if not os.path.exists(case_dataset_path):
+        print(f"{case_dataset_path} does not exist.")
+        return
+
     # Load the case dataset with UTF-8 encoding
     case_data = pd.read_csv(case_dataset_path, encoding='utf-8')
 
@@ -35,7 +41,12 @@ def preprocess_case_data():
 
 
 def preprocess_method_data():
-    # Loading the method dataset with UTF-8 encoding
+    # Check if the file exists
+    if not os.path.exists(method_dataset_path):
+        print(f"{method_dataset_path} does not exist.")
+        return
+
+    # Load the method dataset with UTF-8 encoding
     method_data = pd.read_csv(method_dataset_path, encoding='utf-8')
 
     # Select essential columns
