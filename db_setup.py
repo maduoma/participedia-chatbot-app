@@ -20,6 +20,8 @@ def setup_database():
         conn.execute(text("SET client_encoding TO 'UTF8'"))
 
         # Drop tables if they exist
+        conn.execute(text("DROP TABLE IF EXISTS chat_histories"))
+        conn.execute(text("DROP TABLE IF EXISTS chat_sessions"))
         conn.execute(text("DROP TABLE IF EXISTS cases"))
         conn.execute(text("DROP TABLE IF EXISTS methods"))
 
@@ -43,11 +45,33 @@ def setup_database():
             )
         """))
 
-        # Create indexes on 'title' and 'description' for both tables for faster search
+        # Create 'chat_sessions' table
+        conn.execute(text("""
+            CREATE TABLE chat_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
+        # Create 'chat_histories' table
+        conn.execute(text("""
+            CREATE TABLE chat_histories (
+                id SERIAL PRIMARY KEY,
+                session_id INTEGER REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                query TEXT NOT NULL,
+                response TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
+        # Create indexes for faster search
         conn.execute(text("CREATE INDEX idx_cases_title ON cases (title)"))
         conn.execute(text("CREATE INDEX idx_cases_description ON cases (description)"))
         conn.execute(text("CREATE INDEX idx_methods_title ON methods (title)"))
         conn.execute(text("CREATE INDEX idx_methods_description ON methods (description)"))
+        conn.execute(text("CREATE INDEX idx_chat_sessions_user_id ON chat_sessions (user_id)"))
+        conn.execute(text("CREATE INDEX idx_chat_histories_session_id ON chat_histories (session_id)"))
 
         print("Database tables and indexes created successfully.")
 

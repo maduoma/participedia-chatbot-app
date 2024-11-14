@@ -11,11 +11,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 import logging
 from nltk.tokenize import sent_tokenize
 import nltk
+from flask_migrate import Migrate
 
 # Download the 'punkt' tokenizer models
 nltk.download('punkt')
-
-# Load configuration
 
 # Set up logging for debugging
 logging.basicConfig(level=logging.DEBUG)
@@ -29,13 +28,18 @@ app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY  # For session management
 db = SQLAlchemy(app)
 
+
+
+# After initializing the app and db
+migrate = Migrate(app, db)
+
+
 # Set up OpenAI and SerpAPI keys
 client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
 serpapi_key = Config.SERPAPI_API_KEY
 
-# SQLAlchemy Models for Cases and Methods
 
-
+# SQLAlchemy Models for Cases, Methods, ChatSessions, and ChatHistories
 class Case(db.Model):
     __tablename__ = 'cases'
     id = db.Column(db.Integer, primary_key=True)
@@ -50,6 +54,33 @@ class Method(db.Model):
     title = db.Column(db.String, nullable=False)
     description = db.Column(db.Text, nullable=True)
     url = db.Column(db.String, nullable=True)
+
+
+class ChatSession(db.Model):
+    __tablename__ = 'chat_sessions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String, nullable=False)  # Use unique identifier for each user
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    histories = db.relationship('ChatHistory', backref='session', lazy=True)
+
+
+class ChatHistory(db.Model):
+    __tablename__ = 'chat_histories'
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_sessions.id'), nullable=False)
+    query = db.Column(db.Text, nullable=False)
+    response = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+
+# Function to get or create a chat session
+def get_or_create_session(user_id):
+    session_record = ChatSession.query.filter_by(user_id=user_id).first()
+    if not session_record:
+        session_record = ChatSession(user_id=user_id)
+        db.session.add(session_record)
+        db.session.commit()
+    return session_record
 
 
 # Function to capitalize the first letter of each sentence
@@ -70,10 +101,16 @@ def is_greeting(query):
 @app.route('/query', methods=['POST'])
 def handle_query():
     user_query = request.json.get('query')
+    user_id = request.json.get('user_id', 'default_user')  # Default user_id if not provided
+
+    # Get or create a session for the user
+    chat_session = get_or_create_session(user_id)
 
     # Check for greeting
     if is_greeting(user_query):
-        return jsonify({"response": "Hello! How can I assist you today about Participedia?"})
+        response_text = "Hello! How can I assist you today about Participedia?"
+        save_chat_history(chat_session.id, user_query, response_text)
+        return jsonify({"response": response_text})
 
     try:
         # Preprocess the query
@@ -101,14 +138,12 @@ def handle_query():
             result = search_online(processed_query)
         logging.debug(f"Final Result: {result}")
 
-        # Step 5: Add response to session memory
-        if 'memory' not in session:
-            session['memory'] = []
-        session['memory'].append({"query": user_query, "response": result})
-
         # Capitalize the first letter of each sentence in the description
         if 'description' in result:
             result['description'] = capitalize_sentences(result['description'])
+
+        # Save chat history
+        save_chat_history(chat_session.id, user_query, result.get('description', 'No response found'))
 
         return jsonify(result)
 
@@ -117,6 +152,14 @@ def handle_query():
         return jsonify({"error": "An error occurred while processing your request"}), 500
 
 
+# Function to save chat history
+def save_chat_history(session_id, query, response):
+    chat_history = ChatHistory(session_id=session_id, query=query, response=response)
+    db.session.add(chat_history)
+    db.session.commit()
+
+
+# Function to preprocess the query
 def preprocess_query(query):
     # Use spaCy for tokenization and lemmatization
     doc = nlp(query.lower())
@@ -126,6 +169,7 @@ def preprocess_query(query):
     return ' '.join(lemmatized_tokens)
 
 
+# Function to classify the query intent
 def classify_query(query):
     try:
         response = client.chat.completions.create(
@@ -148,6 +192,7 @@ def classify_query(query):
         return "general"
 
 
+# Function to search for an exact match in cases or methods
 def search_exact_case_method(query):
     case_match = re.search(r'\bcase\s+(\d+)\b', query, re.IGNORECASE)
     method_match = re.search(r'\bmethod\s+(\d+)\b', query, re.IGNORECASE)
@@ -177,6 +222,7 @@ def search_exact_case_method(query):
     return None
 
 
+# Function to perform a semantic search
 def semantic_search(model, query):
     entries = model.query.all()
     query_embedding = get_embedding(query)
@@ -210,6 +256,7 @@ def semantic_search(model, query):
     return None
 
 
+# Function to get embeddings from OpenAI
 def get_embedding(text):
     try:
         response = client.embeddings.create(
@@ -221,6 +268,7 @@ def get_embedding(text):
         return None
 
 
+# Function to perform an online search using SerpAPI
 def search_online(query):
     params = {
         "engine": "google",
@@ -272,5 +320,4 @@ def test_spacy():
 
 
 if __name__ == '__main__':
-    # Replace 5001 with an available port if needed
     app.run(debug=True, port=5001)
