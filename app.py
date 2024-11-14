@@ -1,5 +1,6 @@
 # File: app.py
 
+from config import Config
 from flask import Flask, request, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 import openai
@@ -15,7 +16,6 @@ import nltk
 nltk.download('punkt')
 
 # Load configuration
-from config import Config
 
 # Set up logging for debugging
 logging.basicConfig(level=logging.DEBUG)
@@ -33,8 +33,9 @@ db = SQLAlchemy(app)
 client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
 serpapi_key = Config.SERPAPI_API_KEY
 
-
 # SQLAlchemy Models for Cases and Methods
+
+
 class Case(db.Model):
     __tablename__ = 'cases'
     id = db.Column(db.Integer, primary_key=True)
@@ -60,7 +61,8 @@ def capitalize_sentences(text):
 
 # Function to check if a query is a greeting
 def is_greeting(query):
-    greetings = ["hi", "hello", "hey", "greetings", "good morning", "good evening"]
+    greetings = ["hi", "hello", "hey", "greetings",
+                 "good morning", "good evening"]
     return any(greeting in query.lower() for greeting in greetings)
 
 
@@ -190,7 +192,8 @@ def semantic_search(model, query):
         entry_embedding = get_embedding(entry_text)
         if not entry_embedding:
             continue
-        similarity = cosine_similarity([query_embedding], [entry_embedding])[0][0]
+        similarity = cosine_similarity(
+            [query_embedding], [entry_embedding])[0][0]
 
         if similarity > highest_similarity:
             highest_similarity = similarity
@@ -269,4 +272,5 @@ def test_spacy():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)  # Replace 5001 with an available port if needed
+    # Replace 5001 with an available port if needed
+    app.run(debug=True, port=5001)

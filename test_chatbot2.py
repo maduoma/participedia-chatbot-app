@@ -12,6 +12,7 @@ test_queries = [
     {"query": "What is collaborative governance?"},  # Method-related query
     {"query": "Tell me about a case on climate action"},  # A general query that may go online
     {"query": "This is an unusual request"},  # Should trigger fallback if not found locally
+    {"query": "Tell me about case 3."}, # Expecting info from case 3 including url
 ]
 
 
