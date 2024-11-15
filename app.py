@@ -97,8 +97,8 @@ def upload_files():
 
     # Run data preprocessing and database setup scripts
     try:
-        subprocess.run(["python3", "data_preprocessing.py"], check=True)
-        subprocess.run(["python3", "db_setup.py"], check=True)
+        subprocess.run(["python", "data_preprocessing.py"], check=True)
+        subprocess.run(["python", "db_setup.py"], check=True)
         return jsonify({"message": "Files uploaded and processed successfully.", "success": True})
     except subprocess.CalledProcessError as e:
         logging.error(f"Error running scripts: {e}")

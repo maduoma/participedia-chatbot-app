@@ -4,7 +4,7 @@
 import requests
 
 url = "http://127.0.0.1:5001/query"
-data = {"query": "Tell me about case 3."}
+data = {"query": "Tell me about ASUW Student Senate case."}
 response = requests.post(url, json=data)
 
 print("Status Code:", response.status_code)
