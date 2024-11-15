@@ -1,0 +1,65 @@
+{#Path: templates/index.html #}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Participedia Chatbot</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <link href="https://fonts.googleapis.com/css?family=Roboto&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="container">
+    <!-- Sidebar -->
+    <div id="sidebar" class="sidebar">
+        <h2>Chat History</h2>
+        <button class="close-btn" onclick="toggleSidebar()">&#10005;</button>
+        <div id="chat-history-list">
+            <!-- Chat history titles will be loaded here dynamically -->
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Header with Menu -->
+        <header>
+            <button class="menu-btn" onclick="toggleSidebar()">&#9776; History</button>
+            <nav>
+                <ul>
+                    <li><a href="#" onclick="startNewChat()">Chat</a></li>
+                    <li><a href="#" onclick="showUploadModal()">Upload</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <!-- Chat Window -->
+        <div id="chat-window" class="chat-window">
+            <!-- Chat messages will load here -->
+        </div>
+
+        <!-- Input Form for Chat -->
+        <div class="chat-input">
+            <input type="text" id="user-input" placeholder="Type your message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <!-- Modal for File Upload -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeUploadModal()">&times;</span>
+            <h2>Upload Files</h2>
+            <form id="upload-form" enctype="multipart/form-data">
+                <input type="file" name="files" multiple accept=".csv" required>
+                <button type="button" onclick="uploadFiles()">Upload</button>
+            </form>
+            <div id="upload-status"></div>
+        </div>
+    </div>
+</div>
+
+<script src="static/js/script.js"></script>
+</body>
+</html>

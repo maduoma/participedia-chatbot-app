@@ -1,4 +1,4 @@
-# File: text_chatbot2.py 
+# File: test_chatbot2.py
 
 import requests
 
@@ -13,7 +13,7 @@ test_queries = [
     {"user_id": "user_2", "query": "Tell me about a case on climate action"},  # General query for the same new user
     {"user_id": "user_1", "query": "This is an unusual request"},  # Should trigger fallback if not found locally
     {"user_id": "user_1", "query": "Tell me about case 3."},  # Expecting info from case 3, including URL
-    {"user_id": "user_1", "query": "Tell me about Method 3."}
+    {"user_id": "user_1", "query": "Tell me about Method 3."}  # Expecting info from method 3, including URL
 ]
 
 # Function to send a test query

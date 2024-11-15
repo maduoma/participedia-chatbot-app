@@ -1,9 +1,8 @@
 # File: app.py
 
 from config import Config
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, render_template
 from flask_sqlalchemy import SQLAlchemy
-import openai
 import requests
 import re
 import spacy
@@ -12,6 +11,11 @@ import logging
 from nltk.tokenize import sent_tokenize
 import nltk
 from flask_migrate import Migrate
+import os
+from werkzeug.utils import secure_filename
+import subprocess
+from openai import OpenAI
+
 
 # Download the 'punkt' tokenizer models
 nltk.download('punkt')
@@ -27,15 +31,14 @@ app = Flask(__name__)
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY  # For session management
 db = SQLAlchemy(app)
-
-
-
-# After initializing the app and db
 migrate = Migrate(app, db)
 
+# Set up allowed upload folder and file types
+app.config['UPLOAD_FOLDER'] = 'raw_clean_data'
+ALLOWED_EXTENSIONS = {'csv'}
 
 # Set up OpenAI and SerpAPI keys
-client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+client = OpenAI(api_key=Config.OPENAI_API_KEY)
 serpapi_key = Config.SERPAPI_API_KEY
 
 
@@ -59,7 +62,7 @@ class Method(db.Model):
 class ChatSession(db.Model):
     __tablename__ = 'chat_sessions'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String, nullable=False)  # Use unique identifier for each user
+    user_id = db.Column(db.String, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     histories = db.relationship('ChatHistory', backref='session', lazy=True)
 
@@ -73,6 +76,35 @@ class ChatHistory(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 
+# Utility function to check allowed file extensions
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# Endpoint to upload files
+@app.route('/upload_files', methods=['POST'])
+def upload_files():
+    if 'files' not in request.files:
+        return jsonify({"message": "No files part in the request", "success": False}), 400
+
+    files = request.files.getlist('files')
+    for file in files:
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        else:
+            return jsonify({"message": "Invalid file type. Only CSV files are allowed.", "success": False}), 400
+
+    # Run data preprocessing and database setup scripts
+    try:
+        subprocess.run(["python3", "data_preprocessing.py"], check=True)
+        subprocess.run(["python3", "db_setup.py"], check=True)
+        return jsonify({"message": "Files uploaded and processed successfully.", "success": True})
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error running scripts: {e}")
+        return jsonify({"message": "Error processing files. Check server logs.", "success": False}), 500
+
+
 # Function to get or create a chat session
 def get_or_create_session(user_id):
     session_record = ChatSession.query.filter_by(user_id=user_id).first()
@@ -81,6 +113,41 @@ def get_or_create_session(user_id):
         db.session.add(session_record)
         db.session.commit()
     return session_record
+
+
+# Endpoint to retrieve chat history list
+@app.route('/get_chat_history', methods=['GET'])
+def get_chat_history():
+    histories = ChatSession.query.all()
+    history_list = [{"session_id": history.id, "title": f"Chat {history.id} - {history.created_at.strftime('%Y-%m-%d')}"}
+                    for history in histories]
+    return jsonify(history_list)
+
+
+# Endpoint to retrieve specific chat session by session_id
+@app.route('/get_chat_session', methods=['GET'])
+def get_chat_session():
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({"message": "Session ID not provided"}), 400
+
+    session = ChatSession.query.get(session_id)
+    if not session:
+        return jsonify({"message": "Session not found"}), 404
+
+    messages = []
+    for history in session.histories:
+        messages.append({"text": history.query, "sender": "user"})
+        messages.append({"text": history.response, "sender": "bot"})
+
+    return jsonify(messages)
+
+
+# Function to save chat history
+def save_chat_history(session_id, query, response):
+    chat_history = ChatHistory(session_id=session_id, query=query, response=response)
+    db.session.add(chat_history)
+    db.session.commit()
 
 
 # Function to capitalize the first letter of each sentence
@@ -92,8 +159,7 @@ def capitalize_sentences(text):
 
 # Function to check if a query is a greeting
 def is_greeting(query):
-    greetings = ["hi", "hello", "hey", "greetings",
-                 "good morning", "good evening"]
+    greetings = ["hi", "hello", "hey", "greetings", "good morning", "good evening"]
     return any(greeting in query.lower() for greeting in greetings)
 
 
@@ -101,7 +167,7 @@ def is_greeting(query):
 @app.route('/query', methods=['POST'])
 def handle_query():
     user_query = request.json.get('query')
-    user_id = request.json.get('user_id', 'default_user')  # Default user_id if not provided
+    user_id = request.json.get('user_id', 'default_user')
 
     # Get or create a session for the user
     chat_session = get_or_create_session(user_id)
@@ -113,50 +179,29 @@ def handle_query():
         return jsonify({"response": response_text})
 
     try:
-        # Preprocess the query
+        # Preprocess and handle query
         processed_query = preprocess_query(user_query)
-        logging.debug(f"Processed Query: {processed_query}")
-
-        # Step 1: Use OpenAI API for NLP-based intent classification
         intent = classify_query(processed_query)
-        logging.debug(f"Classified Intent: {intent}")
-
-        # Step 2: Check for specific case/method match
         result = search_exact_case_method(processed_query)
-        logging.debug(f"Exact Match Result: {result}")
 
-        # Step 3: If no exact match, perform semantic search based on intent
         if not result:
             if intent == "case":
                 result = semantic_search(Case, processed_query)
             elif intent == "method":
                 result = semantic_search(Method, processed_query)
-            logging.debug(f"Semantic Search Result: {result}")
 
-        # Step 4: Fallback to online search if no result
         if not result:
             result = search_online(processed_query)
-        logging.debug(f"Final Result: {result}")
 
-        # Capitalize the first letter of each sentence in the description
         if 'description' in result:
             result['description'] = capitalize_sentences(result['description'])
 
-        # Save chat history
         save_chat_history(chat_session.id, user_query, result.get('description', 'No response found'))
-
         return jsonify(result)
 
     except Exception as e:
         logging.error(f"Error processing query: {e}")
         return jsonify({"error": "An error occurred while processing your request"}), 500
-
-
-# Function to save chat history
-def save_chat_history(session_id, query, response):
-    chat_history = ChatHistory(session_id=session_id, query=query, response=response)
-    db.session.add(chat_history)
-    db.session.commit()
 
 
 # Function to preprocess the query
@@ -169,10 +214,11 @@ def preprocess_query(query):
     return ' '.join(lemmatized_tokens)
 
 
-# Function to classify the query intent
+# Updated classify_query function to handle the response correctly
 def classify_query(query):
     try:
-        response = client.chat.completions.create(
+        # Make the API call to OpenAI for classification
+        completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -182,10 +228,16 @@ def classify_query(query):
                 {"role": "user", "content": query},
             ],
         )
-        intent = response['choices'][0]['message']['content'].strip().lower()
-        # Ensure intent is one of the expected values
+
+        # Access the response message content
+        # Access the response message content using attribute access
+        intent = completion.choices[0].message.content.strip().lower()
+        # intent = completion.choices[0].message['content'].strip().lower()
+        
+        # Validate intent to be either 'case', 'method', or 'general'
         if intent not in ["case", "method", "general"]:
             intent = "general"
+        
         return intent
     except Exception as e:
         logging.error(f"OpenAI API error in classify_query: {e}")
@@ -259,10 +311,10 @@ def semantic_search(model, query):
 # Function to get embeddings from OpenAI
 def get_embedding(text):
     try:
-        response = client.embeddings.create(
+        completion = client.embeddings.create(
             input=text, model="text-embedding-ada-002"
         )
-        return response['data'][0]['embedding']
+        return completion['data'][0]['embedding']
     except Exception as e:
         logging.error(f"OpenAI API error in get_embedding: {e}")
         return None
@@ -304,7 +356,7 @@ def feedback():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Server is running!"
+    return render_template("index.html")
 
 
 # Temporary function to verify spaCy tokenization
