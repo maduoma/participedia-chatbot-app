@@ -41,7 +41,7 @@
 
         <!-- Input Form for Chat -->
         <div class="chat-input">
-            <input type="text" id="user-input" placeholder="Type your message...">
+            <input type="text" id="user-input" placeholder="Type your message..." onkeydown="handleEnterKey(event)">
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>

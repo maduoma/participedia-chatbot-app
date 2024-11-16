@@ -15,11 +15,13 @@ engine = create_engine(DATABASE_URI)
 
 
 def setup_database():
-    with engine.connect() as conn:
+    # Use engine.begin() to ensure transaction is committed
+    with engine.begin() as conn:
         # Ensure UTF-8 encoding for this connection
         conn.execute(text("SET client_encoding TO 'UTF8'"))
 
         # Drop tables if they exist
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS chat_histories"))
         conn.execute(text("DROP TABLE IF EXISTS chat_sessions"))
         conn.execute(text("DROP TABLE IF EXISTS cases"))
@@ -45,11 +47,12 @@ def setup_database():
             )
         """))
 
-        # Create 'chat_sessions' table
+        # Create 'chat_sessions' table with a 'title' column
         conn.execute(text("""
             CREATE TABLE chat_sessions (
                 id SERIAL PRIMARY KEY,
                 user_id VARCHAR NOT NULL,
+                title VARCHAR,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
@@ -80,6 +83,16 @@ def load_data_to_db():
     # Load cleaned datasets
     case_data = pd.read_csv(cleaned_case_path, encoding='utf-8')
     method_data = pd.read_csv(cleaned_method_path, encoding='utf-8')
+
+    # Check for duplicate IDs in case_data
+    if case_data['id'].duplicated().any():
+        print("Duplicate IDs found in case data. Removing duplicates.")
+        case_data = case_data.drop_duplicates(subset=['id'])
+
+    # Check for duplicate IDs in method_data
+    if method_data['id'].duplicated().any():
+        print("Duplicate IDs found in method data. Removing duplicates.")
+        method_data = method_data.drop_duplicates(subset=['id'])
 
     # Load data into PostgreSQL tables
     case_data.to_sql('cases', engine, if_exists='append', index=False)

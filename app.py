@@ -15,13 +15,14 @@ import os
 from werkzeug.utils import secure_filename
 import subprocess
 from openai import OpenAI
-
+import sys  # Ensure sys is imported
+import json  # For JSON operations
 
 # Download the 'punkt' tokenizer models
 nltk.download('punkt')
 
 # Set up logging for debugging
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 
 # Load the spaCy English model
 nlp = spacy.load('en_core_web_sm')
@@ -63,6 +64,7 @@ class ChatSession(db.Model):
     __tablename__ = 'chat_sessions'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String, nullable=False)
+    title = db.Column(db.String, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     histories = db.relationship('ChatHistory', backref='session', lazy=True)
 
@@ -70,7 +72,8 @@ class ChatSession(db.Model):
 class ChatHistory(db.Model):
     __tablename__ = 'chat_histories'
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey('chat_sessions.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey(
+        'chat_sessions.id'), nullable=False)
     query = db.Column(db.Text, nullable=False)
     response = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
@@ -90,37 +93,59 @@ def upload_files():
     files = request.files.getlist('files')
     for file in files:
         if file and allowed_file(file.filename):
+            original_filename = file.filename
             filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+            # Map the secured filename to the expected filename
+            if 'Case' in original_filename or 'case' in original_filename:
+                expected_filename = 'Case Dataset.csv'
+            elif 'Method' in original_filename or 'method' in original_filename:
+                expected_filename = 'Method Dataset.csv'
+            else:
+                return jsonify({"message": f"Unexpected filename: {original_filename}", "success": False}), 400
+
+            file.save(os.path.join(
+                app.config['UPLOAD_FOLDER'], expected_filename))
         else:
             return jsonify({"message": "Invalid file type. Only CSV files are allowed.", "success": False}), 400
 
     # Run data preprocessing and database setup scripts
     try:
-        subprocess.run(["python", "data_preprocessing.py"], check=True)
-        subprocess.run(["python", "db_setup.py"], check=True)
+        subprocess.run([sys.executable, "data_preprocessing.py"], check=True)
+        subprocess.run([sys.executable, "db_setup.py"], check=True)
         return jsonify({"message": "Files uploaded and processed successfully.", "success": True})
     except subprocess.CalledProcessError as e:
         logging.error(f"Error running scripts: {e}")
         return jsonify({"message": "Error processing files. Check server logs.", "success": False}), 500
 
 
-# Function to get or create a chat session
-def get_or_create_session(user_id):
-    session_record = ChatSession.query.filter_by(user_id=user_id).first()
-    if not session_record:
-        session_record = ChatSession(user_id=user_id)
-        db.session.add(session_record)
-        db.session.commit()
-    return session_record
+# Endpoint to start a new chat session
+@app.route('/start_new_chat', methods=['POST'])
+def start_new_chat():
+    user_id = request.json.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User ID not provided"}), 400
+
+    session_record = ChatSession(user_id=user_id)
+    db.session.add(session_record)
+    db.session.commit()
+    return jsonify({"message": "New chat session started.", "session_id": session_record.id})
 
 
 # Endpoint to retrieve chat history list
 @app.route('/get_chat_history', methods=['GET'])
 def get_chat_history():
-    histories = ChatSession.query.all()
-    history_list = [{"session_id": history.id, "title": f"Chat {history.id} - {history.created_at.strftime('%Y-%m-%d')}"}
-                    for history in histories]
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+
+    histories = ChatSession.query.filter_by(
+        user_id=user_id).order_by(ChatSession.created_at.desc()).all()
+    history_list = []
+    for session in histories:
+        title = session.title if session.title else f"Chat {
+            session.id} - {session.created_at.strftime('%Y-%m-%d')}"
+        history_list.append({"session_id": session.id, "title": title})
     return jsonify(history_list)
 
 
@@ -131,21 +156,41 @@ def get_chat_session():
     if not session_id:
         return jsonify({"message": "Session ID not provided"}), 400
 
-    session = ChatSession.query.get(session_id)
+    session = db.session.get(ChatSession, session_id)
     if not session:
         return jsonify({"message": "Session not found"}), 404
 
     messages = []
     for history in session.histories:
         messages.append({"text": history.query, "sender": "user"})
-        messages.append({"text": history.response, "sender": "bot"})
+
+        # Parse the response JSON
+        try:
+            response_data = json.loads(history.response)
+            # Reconstruct the bot message content
+            bot_message = ''
+            if 'title' in response_data:
+                bot_message += f"<strong>{response_data['title']}</strong><br>"
+            if 'description' in response_data:
+                bot_message += f"{response_data['description']}<br>"
+            if 'url' in response_data:
+                bot_message += f"<a href='{response_data['url']}' target='_blank'>{
+                    response_data['url']}</a><br>"
+            if 'source' in response_data:
+                bot_message += f"<em>Source: {response_data['source']}</em>"
+            messages.append({"text": bot_message, "sender": "bot"})
+        except json.JSONDecodeError:
+            # If parsing fails, use the raw response
+            messages.append({"text": history.response, "sender": "bot"})
 
     return jsonify(messages)
 
 
 # Function to save chat history
-def save_chat_history(session_id, query, response):
-    chat_history = ChatHistory(session_id=session_id, query=query, response=response)
+def save_chat_history(session_id, query, response_data):
+    response_text = json.dumps(response_data)
+    chat_history = ChatHistory(
+        session_id=session_id, query=query, response=response_text)
     db.session.add(chat_history)
     db.session.commit()
 
@@ -159,7 +204,8 @@ def capitalize_sentences(text):
 
 # Function to check if a query is a greeting
 def is_greeting(query):
-    greetings = ["hi", "hello", "hey", "greetings", "good morning", "good evening"]
+    greetings = ["hi", "hello", "hey", "greetings",
+                 "good morning", "good evening"]
     return any(greeting in query.lower() for greeting in greetings)
 
 
@@ -167,18 +213,42 @@ def is_greeting(query):
 @app.route('/query', methods=['POST'])
 def handle_query():
     user_query = request.json.get('query')
-    user_id = request.json.get('user_id', 'default_user')
+    user_id = request.json.get('user_id')
+    session_id = request.json.get('session_id')
 
-    # Get or create a session for the user
-    chat_session = get_or_create_session(user_id)
+    if not user_id or not session_id:
+        return jsonify({"error": "User ID or Session ID not provided"}), 400
+
+    # Retrieve the chat session
+    chat_session = ChatSession.query.filter_by(
+        id=session_id, user_id=user_id).first()
+    if not chat_session:
+        return jsonify({"error": "Invalid session ID"}), 400
+
+    # Set the session title based on the first user query
+    if not chat_session.title:
+        chat_session.title = user_query[:30]  # Limit to 30 characters
+        db.session.commit()
 
     # Check for greeting
     if is_greeting(user_query):
         response_text = "Hello! How can I assist you today about Participedia?"
-        save_chat_history(chat_session.id, user_query, response_text)
+        save_chat_history(chat_session.id, user_query,
+                          {"response": response_text})
         return jsonify({"response": response_text})
 
     try:
+        # Retrieve the conversation history
+        messages = []
+        for history in chat_session.histories:
+            messages.append({"role": "user", "content": history.query})
+            # Assuming responses are simple text; adjust if necessary
+            messages.append({"role": "assistant", "content": json.loads(
+                history.response).get('description', '')})
+
+        # Add the current user query
+        messages.append({"role": "user", "content": user_query})
+
         # Preprocess and handle query
         processed_query = preprocess_query(user_query)
         intent = classify_query(processed_query)
@@ -196,7 +266,7 @@ def handle_query():
         if 'description' in result:
             result['description'] = capitalize_sentences(result['description'])
 
-        save_chat_history(chat_session.id, user_query, result.get('description', 'No response found'))
+        save_chat_history(chat_session.id, user_query, result)
         return jsonify(result)
 
     except Exception as e:
@@ -223,21 +293,26 @@ def classify_query(query):
             messages=[
                 {
                     "role": "system",
-                    "content": "Classify the user query into either 'case', 'method', or 'general'. Respond with only one word: 'case', 'method', or 'general'.",
+                    "content": (
+                        "Classify the user query into either 'case', 'method', or 'general'. "
+                        "Provide a detailed explanation in at least 50 words about why the query fits the chosen category, "
+                        "but clearly specify the classification as 'case', 'method', or 'general' at the beginning of your response."
+                        "Please provide a detailed description (at least 50 words) about the following topic:\n\nTitle: {title}\n\nExisting Description: {description}\n\nExpanded Description: "
+                    ),
                 },
                 {"role": "user", "content": query},
             ],
+            max_tokens=150,  # Allocate enough tokens for at least 50 words
+            temperature=0.7  # Adjust randomness for creative yet focused responses
         )
 
         # Access the response message content
-        # Access the response message content using attribute access
         intent = completion.choices[0].message.content.strip().lower()
-        # intent = completion.choices[0].message['content'].strip().lower()
-        
+
         # Validate intent to be either 'case', 'method', or 'general'
         if intent not in ["case", "method", "general"]:
             intent = "general"
-        
+
         return intent
     except Exception as e:
         logging.error(f"OpenAI API error in classify_query: {e}")
@@ -312,7 +387,7 @@ def semantic_search(model, query):
 def get_embedding(text):
     try:
         completion = client.embeddings.create(
-            input=text, model="text-embedding-ada-002"
+            input=text, model="text-embedding-3-large"
         )
         return completion['data'][0]['embedding']
     except Exception as e:
@@ -357,18 +432,6 @@ def feedback():
 @app.route("/", methods=["GET"])
 def home():
     return render_template("index.html")
-
-
-# Temporary function to verify spaCy tokenization
-@app.route('/test_spacy', methods=['GET'])
-def test_spacy():
-    try:
-        test_text = "This is a test sentence."
-        doc = nlp(test_text)
-        tokens = [token.text for token in doc]
-        return jsonify({"tokens": tokens})
-    except Exception as e:
-        return jsonify({"error": str(e)})
 
 
 if __name__ == '__main__':
