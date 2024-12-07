@@ -29,16 +29,9 @@ if __name__ == "__main__":
     if session_id:
         # List of test queries
         test_queries = [
-            "Tell me about Case 65",
-            "Tell me about Civicus World Assembly",
-            "Tell me about case 50",
-            "Tell me about ASUW Student Senate World",
+            "british columbia citizens' assembly on electoral reform",
             "Explain the citizens' assembly case in British Columbia",
-            "Tell me about case 3.",
-            "Tell me about wenling city deliberative poll",
-            "Tell me about Method 146.",
-            "Tell me about participatory budgeting",
-            "Tell me about Method 3."
+            "What was the outcome of the citizens' assembly on electoral reform in British Columbia?",
         ]
 
         # Run tests for each query

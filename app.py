@@ -303,11 +303,14 @@ def classify_query(query):
                 {"role": "user", "content": query},
             ],
             max_tokens=150,  # Allocate enough tokens for at least 50 words
-            temperature=0.7  # Adjust randomness for creative yet focused responses
+            temperature=0.7,  # Adjust randomness for creative yet focused responses
+            n=1,
+            stop=None,
         )
 
         # Access the response message content
-        intent = completion.choices[0].message.content.strip().lower()
+        # intent = completion.choices[0].message.content.strip().lower()
+        intent = completion.choices[0].message["content"]
 
         # Validate intent to be either 'case', 'method', or 'general'
         if intent not in ["case", "method", "general"]:
